@@ -66,7 +66,7 @@ The example (`example.cpp`) demonstrates LQR control for a quadrotor with:
 - **State dimension**: 12 (position, orientation, velocities)
 - **Input dimension**: 4 (motor thrusts)
 
-The system dynamics are linearized around the hover condition. The problem data can be found [here](https://osqp.org/docs/release-0.6.3/examples/mpc.html).
+The system dynamics are linearized around the hovering condition. The problem data can be found [here](https://osqp.org/docs/release-0.6.3/examples/mpc.html).
 
 ## References
 
