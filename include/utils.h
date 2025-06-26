@@ -59,12 +59,12 @@ CscMatrix* create_csc_matrix(const Eigen::SparseMatrix<QDLDL_float>& mat_eigen)
     return mat_csc;
 }
 
-void form_KKT_system(const MatrixXs& Q, const MatrixXs& R, const MatrixXs& S,
-                     const VectorXs& q, const VectorXs& r,         
-                     const MatrixXs& A, const MatrixXs& B, const VectorXs& c,
-                     const VectorXs& x0,
-                     QDLDL_int N, QDLDL_float rho_inv,
-                     CscMatrix*& KKT_csc, VectorXs& rhs)
+void form_banded_KKT_system(const MatrixXs& Q, const MatrixXs& R, const MatrixXs& S,
+                        const VectorXs& q, const VectorXs& r,         
+                        const MatrixXs& A, const MatrixXs& B, const VectorXs& c,
+                        const VectorXs& x0,
+                        QDLDL_int N, QDLDL_float rho_inv,
+                        CscMatrix*& KKT_csc, VectorXs& rhs)
 {
     int n = Q.rows();
     int m = R.rows();
@@ -255,3 +255,224 @@ void form_KKT_system(const MatrixXs& Q, const MatrixXs& R, const MatrixXs& S,
     rhs.segment(last_offset, n) = -q; // x_N = -q
 
 }
+
+void form_P(const MatrixXs& Q, const MatrixXs& R, const MatrixXs& S, int N, SparseMatrix<QDLDL_float>& P) 
+{
+    int n = Q.rows();
+    int m = R.rows();
+    
+    int total_size = N * (m + n);
+    P.resize(total_size, total_size);
+    
+    int row_offset = 0, col_offset = 0;
+
+    // First time step
+    for (int i = 0; i < m; ++i) {
+        for (int j = 0; j < m; ++j) {
+            if (R(i, j) != 0.0) {
+                P.insert(i, j) = R(i, j);
+            }
+            // P.insert(i, j) = R(i, j);
+        }
+    }
+
+    for (int k = 1; k < N; ++k) {
+        row_offset = m + (k - 1) * (m + n);
+        col_offset = m + (k - 1) * (m + n);
+        
+        // Q_k block
+        for (int i = 0; i < n; ++i) {
+            for (int j = 0; j < n; ++j) {
+                if (Q(i, j) != 0.0) {
+                    P.insert(row_offset + i, col_offset + j) = Q(i, j);
+                }
+                // P.insert(row_offset + i, col_offset + j) = Q(i, j);
+            }
+        }
+        // S.T_k block
+        for (int i = 0; i < n; ++i) {
+            for (int j = 0; j < m; ++j) {
+                if (S(j, i) != 0.0) {
+                    P.insert(row_offset + i, col_offset + n + j) = S(j, i);
+                }
+                // P.insert(row_offset + i, col_offset + n + j) = S(j, i);
+            }
+        }
+        // S_k block
+        for (int i = 0; i < m; ++i) {
+            for (int j = 0; j < n; ++j) {
+                if (S(i, j) != 0.0) {
+                    P.insert(row_offset + n + i, col_offset + j) = S(i, j);
+                }
+                // P.insert(row_offset + n + i, col_offset + j) = S(i, j);
+            }
+        }
+        // R_k block
+        for (int i = 0; i < m; ++i) {
+            for (int j = 0; j < m; ++j) {
+                if (R(i, j) != 0.0) {
+                    P.insert(row_offset + n + i, col_offset + n + j) = R(i, j);
+                }
+                // P.insert(row_offset + n + i, col_offset + n + j) = R(i, j);
+            }
+        }
+    }
+    // Last time step (k=N)
+    row_offset = m + (N - 1) * (m + n);
+    col_offset = m + (N - 1) * (m + n);
+    for (int i = 0; i < n; ++i) {
+        for (int j = 0; j < n; ++j) {
+            if (Q(i, j) != 0.0) {
+                P.insert(row_offset + i, col_offset + j) = Q(i, j);
+            }
+            // P.insert(row_offset + i, col_offset + j) = Q(i, j);
+        }
+    }
+
+    P.makeCompressed();
+
+}
+
+void form_A(const MatrixXs& Ad, const MatrixXs& Bd, int N, SparseMatrix<QDLDL_float>& A) 
+{
+    int n = Ad.rows();
+    int m = Bd.cols();
+    
+    A.resize(N * n, N * (m + n));
+    
+    int row_offset = 0, col_offset = 0;
+
+    // First time step [B_0, -I]
+    for (int i = 0; i < n; ++i) {
+        for (int j = 0; j < m; ++j) {
+            // if (Bd(i, j) != 0.0) {
+            //     A.insert(i, j) = Bd(i, j);
+            // }
+            A.insert(i, j) = Bd(i, j);
+        }
+    }
+    for (int i = 0; i < n; ++i) {
+        A.insert(i, m + i) = -1.0; // -I
+    }
+
+    for (int k = 1; k < N; ++k) {
+        row_offset = k * n;
+        col_offset = m + (k - 1) * (m + n);
+        
+        // A_k block
+        for (int i = 0; i < n; ++i) {
+            for (int j = 0; j < n; ++j) {
+                if (Ad(i, j) != 0.0) {
+                    A.insert(row_offset + i, col_offset + j) = Ad(i, j);
+                }
+                // A.insert(row_offset + i, col_offset + j) = Ad(i, j);
+            }
+        }
+
+        // B_k block
+        for (int i = 0; i < n; ++i) {
+            for (int j = 0; j < m; ++j) {
+                if (Bd(i, j) != 0.0) {
+                    A.insert(row_offset + i, col_offset + n + j) = Bd(i, j);
+                }
+                // A.insert(row_offset + i, col_offset + n + j) = Bd(i, j);
+            }
+        }
+        
+        // -I block
+        for (int i = 0; i < n; ++i) {
+            A.insert(row_offset + i, col_offset + n + m + i) = -1.0; // -I
+        }
+
+    }
+
+    A.makeCompressed();
+  
+}
+
+void form_QP_KKT_system(const MatrixXs& Q, const MatrixXs& R, const MatrixXs& S,
+                        const VectorXs& q, const VectorXs& r,         
+                        const MatrixXs& A, const MatrixXs& B, const VectorXs& c,
+                        const VectorXs& x0,
+                        QDLDL_int N, QDLDL_float rho_inv,
+                        CscMatrix*& KKT_csc, VectorXs& rhs)
+{
+    SparseMatrix<QDLDL_float> P_eign, A_eign;
+    form_P(Q, R, S, N, P_eign);
+    form_A(A, B, N, A_eign);
+
+    QDLDL_int n_var = P_eign.cols();
+    QDLDL_int n_constr = A_eign.rows();
+    QDLDL_int kkt_size = n_var + n_constr;
+
+    SparseMatrix<QDLDL_float> KKT_mat(kkt_size, kkt_size);
+    std::vector<Triplet<QDLDL_float>> triplets;
+
+    // Add P block (upper-left)
+    for (int col = 0; col < P_eign.outerSize(); ++col) {
+        for (SparseMatrix<QDLDL_float>::InnerIterator it(P_eign, col); it; ++it) {
+            triplets.emplace_back(it.row(), it.col(), it.value());
+        }
+    }
+
+    // Add A^T block (upper-right)
+    for (int col = 0; col < A_eign.outerSize(); ++col) {
+        for (SparseMatrix<QDLDL_float>::InnerIterator it(A_eign, col); it; ++it) {
+            triplets.emplace_back(it.col(), n_var + it.row(), it.value());
+        }
+    }
+
+    // Add A block (lower-left)
+    for (int col = 0; col < A_eign.outerSize(); ++col) {
+        for (SparseMatrix<QDLDL_float>::InnerIterator it(A_eign, col); it; ++it) {
+            triplets.emplace_back(n_var + it.row(), it.col(), it.value());
+        }
+    }
+    
+    // Add -rho_inv * I block (lower-right)
+    for (int i = 0; i < n_constr; ++i) {
+        triplets.emplace_back(n_var + i, n_var + i, -rho_inv);
+    }
+    KKT_mat.setFromTriplets(triplets.begin(), triplets.end());
+    KKT_mat.makeCompressed();
+
+    SparseMatrix<QDLDL_float> KKT_triu = KKT_mat.triangularView<Eigen::Upper>();
+    KKT_csc = create_csc_matrix(KKT_triu);
+    if (!KKT_csc) {
+        std::cerr << "Failed to create CSC matrix for KKT system." << std::endl;
+        return;
+    }
+    
+    /* RHS vector */
+    int n = q.size();
+    int m = r.size();
+    int total_size = N * (m + 2 * n);
+    rhs.resize(total_size);
+
+    // Fill in the first part of the RHS
+    rhs.head(m) = -r - S * x0;
+
+    int offset;
+    for (int k = 1; k < N; ++k) {
+        offset = m + (k - 1) * (m + n);
+        rhs.segment(offset, n) = -q;
+        rhs.segment(offset + n, m) = -r;
+    }
+    offset = m + (N - 1) * (m + n);
+    rhs.segment(offset, n) = -q;
+
+    offset = N * (m + n);
+    rhs.segment(offset, n) = -A * x0 - c;
+    for (int k = 1; k < N; ++k) {
+        offset = N * (m + n) + k * n;
+        rhs.segment(offset, n) = -c;
+    }
+
+}
+
+
+
+
+
+
+

@@ -1,5 +1,6 @@
 #include <iostream>
 #include <Eigen/Sparse>
+#include <chrono>
 #include "data_types.h"
 #include "qdldl.h"
 #include "utils.h"
@@ -7,10 +8,25 @@
 
 using namespace Eigen;
 
-int main() {
+int main(int argc, char* argv[]) 
+{
+    // Parse command line argument for KKT system type
+    bool use_banded = false;
+    if (argc > 1) {
+        std::string arg = argv[1];
+        if (arg == "--banded") {
+            use_banded = true;
+        } else if (arg == "--qp") {
+            use_banded = false;
+        } else {
+            std::cerr << "Unknown argument: " << arg << ". Use '--banded' or '--qp'." << std::endl;
+            return -1;
+        }
+    }
+
     const int n = 12; // state dimension
     const int m = 4;  // input dimension
-    const int N = 10; // prediction horizon
+    const int N = 100; // prediction horizon
 
     VectorXs x0(n);
     VectorXs x_ref(n);
@@ -68,11 +84,24 @@ int main() {
     SparseMatrix<QDLDL_float> KKT_eigen;
     VectorXs rhs;
     CscMatrix* KKT_csc = nullptr;
-    form_KKT_system(Q, R, S, q, r, 
-                    A, B, c, 
-                    x0, 
-                    N, rho_inv, 
-                    KKT_csc, rhs);
+
+    std::cout << "Using " << (use_banded ? "banded" : "QP-type") << " KKT system formation ..." << std::endl;
+
+    if (use_banded) {
+        form_banded_KKT_system(Q, R, S, q, r, 
+                               A, B, c, 
+                               x0, 
+                               N, rho_inv, 
+                               KKT_csc, rhs);
+    } else {
+        form_QP_KKT_system(Q, R, S, q, r, 
+                           A, B, c, 
+                           x0, 
+                           N, rho_inv, 
+                           KKT_csc, rhs);
+    }
+
+
     if (!KKT_csc) {
         // Failed to form KKT system
         return -1;
@@ -101,14 +130,21 @@ int main() {
     for (QDLDL_int i = 0; i < KKT_csc->n; ++i) {
         qdldl_data->x[i] = rhs[i];
     }
+
+    auto start = std::chrono::system_clock::now();
+
     QDLDL_solve(qdldl_data->Ln, qdldl_data->Lp, qdldl_data->Li, qdldl_data->Lx,
                 qdldl_data->Dinv, 
                 qdldl_data->x);
 
+    auto end = std::chrono::system_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
+    std::cout << "QDLDL solve time: " << duration.count() / 1e3 << " ms" << std::endl;
+
     /* Output the solution */
     std::cout << "Control inputs:" << std::endl;
-    for (int k = 0; k < N; ++k) {
-        int offset = k * (m + 2 * n);
+    for (int k = 0; k < std::min(N, 10) ; ++k) {
+        int offset = use_banded ? k * (m + 2 * n) : k * (m + n);
         std::cout << "u[" << k << "] = [";
         for (int i = 0; i < m; ++i) {
             std::cout << qdldl_data->x[offset + i] << (i < m - 1 ? ", " : "");
