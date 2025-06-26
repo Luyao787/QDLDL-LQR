@@ -24,8 +24,8 @@ int main(int argc, char* argv[])
         }
     }
 
-    const int n = 12; // state dimension
-    const int m = 4;  // input dimension
+    const int n = 12;  // state dimension
+    const int m = 4;   // input dimension
     const int N = 100; // prediction horizon
 
     VectorXs x0(n);
@@ -115,6 +115,8 @@ int main(int argc, char* argv[])
         return -1;
     }
 
+    auto start = std::chrono::system_clock::now();
+
     QDLDL_int fact_status = QDLDL_factor(KKT_csc->n, KKT_csc->p, KKT_csc->i, KKT_csc->x,
                                          qdldl_data->Lp, qdldl_data->Li, qdldl_data->Lx,
                                          qdldl_data->D, qdldl_data->Dinv,
@@ -131,14 +133,13 @@ int main(int argc, char* argv[])
         qdldl_data->x[i] = rhs[i];
     }
 
-    auto start = std::chrono::system_clock::now();
-
     QDLDL_solve(qdldl_data->Ln, qdldl_data->Lp, qdldl_data->Li, qdldl_data->Lx,
                 qdldl_data->Dinv, 
                 qdldl_data->x);
 
     auto end = std::chrono::system_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+    
     std::cout << "QDLDL solve time: " << duration.count() / 1e3 << " ms" << std::endl;
 
     /* Output the solution */
