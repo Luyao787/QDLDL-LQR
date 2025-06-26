@@ -40,8 +40,15 @@ cmake --build .
 
 4. Run the example:
 ```bash
-./example
+./example --banded
 ```
+This runs the LQR solver using a banded KKT matrix approach with decision variables ordered as: `[u_0, λ_1, x_1, u_1, λ_2, x_2, ..., u_{N-1}, λ_N, x_N]`.
+
+```bash
+./example --qp
+```
+This runs the LQR solver formulated as a quadratic programming problem with decision variables ordered as: `[u_0, x_1, u_1, x_2, ..., u_{N-1}, x_N, λ_1, λ_2, ..., λ_N]`.
+
 
 ## Usage
 
@@ -53,7 +60,27 @@ The main components include:
 - Type aliases for Eigen matrices and vectors
 
 ### KKT System Formation (`include/utils.h`)
-The `form_KKT_system` function constructs the KKT matrix and the right-hand side vector.
+The implementation provides two KKT system formulations:
+
+- **Banded KKT System**: Uses `form_banded_KKT_system` with variables ordered by time step
+- **QP-type KKT System**: Uses `form_QP_KKT_system` with primal variables grouped together
+
+Both approaches construct the KKT matrix and right-hand side vector for the LQR problem.
+
+### Decision Variable Ordering
+
+#### Banded Approach (`--banded`)
+Variables are ordered as: `[u_0, λ_1, x_1, u_1, λ_2, x_2, ..., u_{N-1}, λ_N, x_N]`
+
+Where:
+- `u_k`: Control input (dimension: 4 for quadrotor)
+- `λ_k`: Lagrange multiplier (dimension: 12 for quadrotor)  
+- `x_k`: State (dimension: 12 for quadrotor)
+
+#### QP Approach (`--qp`)
+Variables are ordered as: `[u_0, x_1, u_1, x_2, ..., u_{N-1}, x_N, λ_1, λ_2, ..., λ_N]`
+
+This separates primal variables (controls and states) from dual variables (Lagrange multipliers).
 
 ### QDLDL Interface (`include/qdldl_interface.h`)
 - `qdldl_setup`: Initialize QDLDL data structures
