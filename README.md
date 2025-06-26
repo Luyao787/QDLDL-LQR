@@ -62,7 +62,7 @@ The main components include:
 ### KKT System Formation (`include/utils.h`)
 The implementation provides two KKT system formulations:
 
-- **Banded KKT System**: Uses `form_banded_KKT_system` with variables ordered by time step
+- **Banded KKT System**: Uses `form_banded_KKT_system` with primal and dual variables ordered by time step
 - **QP-type KKT System**: Uses `form_QP_KKT_system` with primal variables grouped together
 
 Both approaches construct the KKT matrix and right-hand side vector for the LQR problem.
